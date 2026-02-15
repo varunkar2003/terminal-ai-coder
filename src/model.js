@@ -1,9 +1,17 @@
 import { getConfig } from './config.js';
+import { Agent } from 'undici';
+
+// Ollama can be very slow (model loading, cold starts on limited RAM).
+// Disable Node.js/undici default 300s headers timeout.
+const ollamaDispatcher = new Agent({
+  headersTimeout: 0,
+  bodyTimeout: 0,
+});
 
 export async function checkOllamaHealth() {
   const { ollamaHost } = getConfig();
   try {
-    const res = await fetch(ollamaHost);
+    const res = await fetch(ollamaHost, { dispatcher: ollamaDispatcher });
     return res.ok;
   } catch {
     return false;
@@ -12,7 +20,7 @@ export async function checkOllamaHealth() {
 
 export async function listModels() {
   const { ollamaHost } = getConfig();
-  const res = await fetch(`${ollamaHost}/api/tags`);
+  const res = await fetch(`${ollamaHost}/api/tags`, { dispatcher: ollamaDispatcher });
   if (!res.ok) throw new Error('Failed to list models');
   const data = await res.json();
   return data.models || [];
@@ -48,6 +56,7 @@ export async function* streamChat(messages, options = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      dispatcher: ollamaDispatcher,
     });
   } catch (err) {
     throw new Error(`Cannot connect to Ollama: ${err.cause?.code || err.message}. Is Ollama running?`);

@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { getConfig, updateConfig } from './config.js';
-import { checkOllamaHealth, checkModelAvailable, streamChat, listModels } from './model.js';
+import { getProvider, getDefaultModel, isValidProvider, getProviderNames, getKeyEnvVar } from './providers/router.js';
 import { Conversation } from './context/conversation.js';
 import { getProjectContext } from './context/project.js';
 import { prompt, multiLinePrompt, confirm, closePrompt } from './ui/prompt.js';
@@ -16,36 +16,45 @@ const conversation = new Conversation();
 
 async function startupChecks() {
   const config = getConfig();
+  const provider = await getProvider();
 
-  startSpinner('Checking Ollama connection...');
-  const healthy = await checkOllamaHealth();
-  if (!healthy) {
-    failSpinner('Ollama is not running');
-    renderError(`Cannot connect to Ollama at ${config.ollamaHost}`);
-    renderWarning('Start Ollama with: ollama serve');
+  startSpinner(`Checking ${provider.getProviderName()} connection...`);
+  const health = await provider.checkHealth();
+  if (!health.ok) {
+    failSpinner(`${provider.getProviderName()} not available`);
+    renderError(health.error);
+    if (config.provider === 'ollama') {
+      renderWarning('Start Ollama with: ollama serve');
+    }
     process.exit(1);
   }
-  succeedSpinner('Ollama connected');
+  succeedSpinner(`${provider.getProviderName()} connected`);
 
-  startSpinner(`Looking for model ${chalk.cyan(config.model)}...`);
-  const available = await checkModelAvailable(config.model);
-  if (!available) {
-    failSpinner(`Model ${config.model} not found`);
-    renderWarning(`Pull it with: ollama pull ${config.model}`);
+  // Only check model availability for Ollama (local models)
+  if (config.provider === 'ollama') {
+    const { checkModelAvailable } = await import('./providers/ollama.js');
+    startSpinner(`Looking for model ${chalk.cyan(config.model)}...`);
+    const available = await checkModelAvailable(config.model);
+    if (!available) {
+      failSpinner(`Model ${config.model} not found`);
+      renderWarning(`Pull it with: ollama pull ${config.model}`);
 
-    try {
-      const models = await listModels();
-      if (models.length > 0) {
-        console.log(chalk.gray('\nAvailable models:'));
-        for (const m of models) {
-          console.log(chalk.gray(`  - ${m.name}`));
+      try {
+        const models = await provider.listModels();
+        if (models.length > 0) {
+          console.log(chalk.gray('\nAvailable models:'));
+          for (const m of models) {
+            console.log(chalk.gray(`  - ${m.name}`));
+          }
         }
-      }
-    } catch { /* ignore */ }
+      } catch { /* ignore */ }
 
-    process.exit(1);
+      process.exit(1);
+    }
+    succeedSpinner(`Model ${config.model} ready (context: ${config.contextWindow} tokens)`);
+  } else {
+    succeedSpinner(`Using model ${chalk.cyan(config.model)}`);
   }
-  succeedSpinner(`Model ${config.model} ready (context: ${config.contextWindow} tokens)`);
 }
 
 function injectProjectContext() {
@@ -90,6 +99,10 @@ async function handleSlashCommand(input) {
       await handleModelCommand(args);
       return true;
 
+    case '/provider':
+      await handleProviderCommand(args);
+      return true;
+
     case '/read':
       await handleReadCommand(args);
       return true;
@@ -129,25 +142,29 @@ ${chalk.cyan.bold('VKCoder Commands')}
   ${chalk.yellow('/grep')} <pattern> [fileglob]         Search file contents
   ${chalk.yellow('/context')}                           Show project context
   ${chalk.yellow('/model')} [name]                      Show or switch model
+  ${chalk.yellow('/provider')} [name]                   Show or switch provider
   ${chalk.yellow('/clear')}                             Clear conversation history
   ${chalk.yellow('/help')}                              Show this help
   ${chalk.yellow('/quit')}                              Exit VKCoder
 
-${chalk.gray('Tip: Use triple backticks (\`\`\`) to enter multi-line input')}
+${chalk.gray('Tip: Use triple backticks (\\`\\`\\`) to enter multi-line input')}
 `;
   console.log(help);
 }
 
 async function handleModelCommand(args) {
+  const provider = await getProvider();
+
   if (!args) {
     const config = getConfig();
-    console.log(`Current model: ${chalk.cyan(config.model)}`);
+    console.log(`Current model: ${chalk.cyan(config.model)} (${provider.getProviderName()})`);
     try {
-      const models = await listModels();
+      const models = await provider.listModels();
       console.log(chalk.gray('\nAvailable models:'));
       for (const m of models) {
         const marker = m.name === config.model ? chalk.green(' ← current') : '';
-        console.log(`  ${chalk.white(m.name)}${marker}`);
+        const desc = m.description ? chalk.gray(` — ${m.description}`) : '';
+        console.log(`  ${chalk.white(m.name)}${desc}${marker}`);
       }
     } catch { /* ignore */ }
     return;
@@ -155,6 +172,51 @@ async function handleModelCommand(args) {
 
   updateConfig({ model: args });
   renderSuccess(`Switched to model: ${args}`);
+}
+
+async function handleProviderCommand(args) {
+  const config = getConfig();
+
+  if (!args) {
+    // Show current provider and list all available
+    const provider = await getProvider();
+    console.log(`Current provider: ${chalk.cyan(provider.getProviderName())} (${config.provider})`);
+    console.log(`Current model: ${chalk.cyan(config.model)}`);
+    console.log(chalk.gray('\nAvailable providers:'));
+
+    for (const name of getProviderNames()) {
+      const isCurrent = name === config.provider;
+      const marker = isCurrent ? chalk.green(' ← current') : '';
+      const envVar = getKeyEnvVar(name);
+      let keyStatus = '';
+      if (envVar) {
+        keyStatus = process.env[envVar]
+          ? chalk.green(' (key set)')
+          : chalk.yellow(' (key missing)');
+      }
+      console.log(`  ${chalk.white(name)}${keyStatus}${marker}`);
+    }
+    return;
+  }
+
+  // Switch provider
+  const newProvider = args.toLowerCase();
+  if (!isValidProvider(newProvider)) {
+    renderError(`Unknown provider: ${args}. Valid providers: ${getProviderNames().join(', ')}`);
+    return;
+  }
+
+  const defaultModel = getDefaultModel(newProvider);
+  updateConfig({ provider: newProvider, model: defaultModel });
+
+  // Validate the new provider
+  const provider = await getProvider(newProvider);
+  const health = await provider.checkHealth();
+  if (!health.ok) {
+    renderWarning(health.error);
+  }
+
+  renderSuccess(`Switched to ${provider.getProviderName()} with model ${defaultModel}`);
 }
 
 async function handleReadCommand(args) {
@@ -299,6 +361,7 @@ async function handleGrepCommand(args) {
 
 async function chat(userInput) {
   const config = getConfig();
+  const provider = await getProvider();
   conversation.addUser(userInput);
 
   const startTime = Date.now();
@@ -309,7 +372,7 @@ async function chat(userInput) {
     const messages = conversation.getMessages();
     updateSpinner(`Waiting for ${chalk.cyan(config.model)} to respond...`);
 
-    const stream = streamChat(messages);
+    const stream = provider.streamChat(messages);
     let firstToken = true;
     let tokenCount = 0;
 
@@ -361,16 +424,27 @@ async function handleSingleQuestion(question) {
 }
 
 export async function startRepl(options = {}) {
-  const { modelOverride, singleQuestion } = options;
+  const { modelOverride, providerOverride, singleQuestion } = options;
+
+  if (providerOverride) {
+    if (!isValidProvider(providerOverride)) {
+      renderError(`Unknown provider: ${providerOverride}. Valid providers: ${getProviderNames().join(', ')}`);
+      process.exit(1);
+    }
+    const defaultModel = getDefaultModel(providerOverride);
+    updateConfig({ provider: providerOverride, model: defaultModel });
+  }
 
   if (modelOverride) {
     updateConfig({ model: modelOverride });
   }
 
   // Banner
+  const config = getConfig();
+  const provider = await getProvider();
   console.log();
   console.log(chalk.cyan.bold('  ★ VKCoder') + chalk.gray(' — Terminal AI Coding Assistant'));
-  console.log(chalk.gray('  Powered by local models via Ollama'));
+  console.log(chalk.gray(`  Powered by ${provider.getProviderName()}`));
   renderDivider();
   console.log();
 

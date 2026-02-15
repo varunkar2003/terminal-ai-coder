@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const defaults = {
+  provider: 'ollama',
   ollamaHost: 'http://localhost:11434',
   model: 'qwen2.5-coder:7b',
   temperature: 0.2,

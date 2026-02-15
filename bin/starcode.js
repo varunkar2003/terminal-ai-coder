@@ -19,10 +19,17 @@ Usage:
   vkcoder [options]
 
 Options:
-  --model <name>    Ollama model to use (default: starcoder2:3b)
-  --help, -h        Show this help message
-  --version, -v     Show version
-  -q <question>     Ask a single question and exit
+  --model <name>      Model to use (default depends on provider)
+  --provider <name>   API provider: ollama, openai, anthropic, gemini
+  --help, -h          Show this help message
+  --version, -v       Show version
+  -q <question>       Ask a single question and exit
+
+Providers:
+  ollama      Local models via Ollama (default)
+  openai      OpenAI API (set OPENAI_API_KEY)
+  anthropic   Anthropic API (set ANTHROPIC_API_KEY)
+  gemini      Google Gemini API (set GOOGLE_API_KEY)
 
 Slash Commands (inside REPL):
   /read <file> [--lines start-end]   Read a file
@@ -32,6 +39,7 @@ Slash Commands (inside REPL):
   /grep <pattern> [glob]             Search file contents
   /context                           Show project context
   /model [name]                      Show or switch model
+  /provider [name]                   Show or switch provider
   /clear                             Clear conversation history
   /help                              Show help
   /quit                              Exit VKCoder
@@ -52,6 +60,13 @@ if (modelIdx !== -1 && args[modelIdx + 1]) {
   modelOverride = args[modelIdx + 1];
 }
 
+// Parse --provider
+let providerOverride = null;
+const providerIdx = args.indexOf('--provider');
+if (providerIdx !== -1 && args[providerIdx + 1]) {
+  providerOverride = args[providerIdx + 1];
+}
+
 // Parse -q (single question mode)
 let singleQuestion = null;
 const qIdx = args.indexOf('-q');
@@ -61,4 +76,4 @@ if (qIdx !== -1 && args[qIdx + 1]) {
 
 // Launch the main app
 const { startRepl } = await import('../src/index.js');
-startRepl({ modelOverride, singleQuestion });
+startRepl({ modelOverride, providerOverride, singleQuestion });

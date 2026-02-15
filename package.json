@@ -11,7 +11,14 @@
     "start": "node bin/starcode.js",
     "setup": "bash setup.sh"
   },
-  "keywords": ["ai", "coding", "assistant", "terminal", "ollama", "local"],
+  "keywords": [
+    "ai",
+    "coding",
+    "assistant",
+    "terminal",
+    "ollama",
+    "local"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -22,6 +29,7 @@
     "glob": "^10.3.10",
     "marked": "^12.0.1",
     "marked-terminal": "^7.0.0",
-    "ora": "^8.0.1"
+    "ora": "^8.0.1",
+    "undici": "^7.22.0"
   }
 }

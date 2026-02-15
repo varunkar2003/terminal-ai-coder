@@ -1,11 +1,11 @@
 # VKCoder
 
-Terminal AI coding assistant powered by local models via Ollama. No cloud APIs, no API keys — complete privacy.
+Terminal AI coding assistant. Works with local models via Ollama or cloud APIs (OpenAI, Anthropic, Google Gemini).
 
 ## Prerequisites
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **Ollama** — [ollama.ai](https://ollama.ai)
+- **Ollama** (for local models) — [ollama.ai](https://ollama.ai)
 
 ## Quick Start (Automatic)
 
@@ -42,14 +42,18 @@ node bin/starcode.js
 ### Interactive Mode
 
 ```bash
-vkcoder                          # Start the REPL
+vkcoder                          # Start with Ollama (default)
 vkcoder --model qwen2.5-coder:7b  # Use a specific model
+vkcoder --provider openai        # Use OpenAI API
+vkcoder --provider anthropic     # Use Anthropic API
+vkcoder --provider gemini        # Use Google Gemini API
 ```
 
 ### Single Question Mode
 
 ```bash
 vkcoder -q "How do I reverse a string in Python?"
+vkcoder --provider openai -q "Explain async/await in JavaScript"
 ```
 
 ### Slash Commands
@@ -64,6 +68,7 @@ vkcoder -q "How do I reverse a string in Python?"
 | `/grep <pattern> [fileglob]` | Search file contents with regex |
 | `/context` | Show detected project context |
 | `/model [name]` | Show or switch the active model |
+| `/provider [name]` | Show or switch the API provider |
 | `/clear` | Clear conversation history |
 | `/help` | Show available commands |
 | `/quit` | Exit VKCoder |
@@ -81,7 +86,74 @@ vkcoder> ```
 ... ```
 ```
 
-## Model Recommendations
+## API Providers
+
+VKCoder supports four providers. Ollama runs locally; the others require an API key set as an environment variable.
+
+| Provider | Flag | Env Variable | Default Model |
+|----------|------|-------------|---------------|
+| Ollama | `--provider ollama` | — | `qwen2.5-coder:7b` |
+| OpenAI | `--provider openai` | `OPENAI_API_KEY` | `gpt-4o` |
+| Anthropic | `--provider anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| Google Gemini | `--provider gemini` | `GOOGLE_API_KEY` | `gemini-2.0-flash` |
+
+### Setting API Keys
+
+Export the key for the provider you want to use:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="AI..."
+```
+
+Or pass it inline for a single session:
+
+```bash
+OPENAI_API_KEY="sk-..." vkcoder --provider openai
+```
+
+You can also add keys to a `.env` file in the project root (already in `.gitignore`):
+
+```
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=AI...
+```
+
+### Switching Providers at Runtime
+
+Use the `/provider` command inside the REPL:
+
+```
+vkcoder> /provider
+Current provider: Ollama (local) (ollama)
+Current model: qwen2.5-coder:7b
+
+Available providers:
+  ollama (key set) ← current
+  openai (key set)
+  anthropic (key missing)
+  gemini (key missing)
+
+vkcoder> /provider openai
+✔ Switched to OpenAI with model gpt-4o
+
+vkcoder> /model gpt-4-turbo
+✔ Switched to model: gpt-4-turbo
+```
+
+### Available Models
+
+**OpenAI:** `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`
+
+**Anthropic:** `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-haiku-35-20241022`
+
+**Google Gemini:** `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+
+**Ollama:** Any model you've pulled — run `ollama list` to see installed models.
+
+## Ollama Model Recommendations
 
 | Model | Size | Best For |
 |-------|------|----------|
@@ -104,6 +176,7 @@ Create a `.vkcoder.json` in your project root to customize behavior:
 
 ```json
 {
+  "provider": "ollama",
   "model": "qwen2.5-coder:7b",
   "temperature": 0.2,
   "ollamaHost": "http://localhost:11434",
@@ -153,12 +226,22 @@ ollama serve
 Pull the model first:
 
 ```bash
-ollama pull starcoder2:3b
+ollama pull qwen2.5-coder:7b
 ```
+
+### "API key not set"
+
+Export the key for your provider:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Or check status with `/provider` inside the REPL.
 
 ### Slow responses
 
-- Use a smaller model (`starcoder2:3b`)
+- Use a smaller model (`starcoder2:3b` for Ollama, `gpt-4o-mini` for OpenAI)
 - Ensure no other heavy processes are using GPU/CPU
 - Check Ollama logs: `ollama logs`
 
