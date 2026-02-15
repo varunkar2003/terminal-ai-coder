@@ -1,0 +1,27 @@
+{
+  "name": "starcode",
+  "version": "1.0.0",
+  "description": "Terminal AI coding assistant powered by local models via Ollama",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "starcode": "./bin/starcode.js"
+  },
+  "scripts": {
+    "start": "node bin/starcode.js",
+    "setup": "bash setup.sh"
+  },
+  "keywords": ["ai", "coding", "assistant", "terminal", "ollama", "local"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "cli-highlight": "^2.1.11",
+    "glob": "^10.3.10",
+    "marked": "^12.0.1",
+    "marked-terminal": "^7.0.0",
+    "ora": "^8.0.1"
+  }
+}

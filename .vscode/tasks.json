@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "StarCode: Launch",
+      "type": "shell",
+      "command": "node",
+      "args": ["${workspaceFolder}/bin/starcode.js"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "StarCode: Launch (Custom Model)",
+      "type": "shell",
+      "command": "node",
+      "args": ["${workspaceFolder}/bin/starcode.js", "--model", "${input:modelName}"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "modelName",
+      "description": "Ollama model name",
+      "default": "starcoder2:3b",
+      "type": "promptString"
+    }
+  ]
+}
