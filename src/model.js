@@ -88,7 +88,16 @@ export async function* streamChat(messages, options = {}) {
           if (json.message?.content) {
             yield json.message.content;
           }
-          if (json.done) return;
+          if (json.done) {
+            yield {
+              usage: {
+                prompt_tokens: json.prompt_eval_count || 0,
+                completion_tokens: json.eval_count || 0,
+                total_tokens: (json.prompt_eval_count || 0) + (json.eval_count || 0),
+              },
+            };
+            return;
+          }
         } catch {
           // skip malformed JSON lines
         }
@@ -104,6 +113,15 @@ export async function* streamChat(messages, options = {}) {
       const json = JSON.parse(buffer);
       if (json.message?.content) {
         yield json.message.content;
+      }
+      if (json.done) {
+        yield {
+          usage: {
+            prompt_tokens: json.prompt_eval_count || 0,
+            completion_tokens: json.eval_count || 0,
+            total_tokens: (json.prompt_eval_count || 0) + (json.eval_count || 0),
+          },
+        };
       }
     } catch {
       // skip

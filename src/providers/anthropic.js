@@ -61,6 +61,8 @@ export async function* streamChat(messages, options = {}) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   try {
     while (true) {
@@ -78,13 +80,28 @@ export async function* streamChat(messages, options = {}) {
 
         try {
           const json = JSON.parse(data);
+          if (json.type === 'message_start' && json.message?.usage) {
+            inputTokens = json.message.usage.input_tokens || 0;
+          }
           if (json.type === 'content_block_delta') {
             const text = json.delta?.text;
             if (text) {
               yield text;
             }
           }
-          if (json.type === 'message_stop') return;
+          if (json.type === 'message_delta' && json.usage) {
+            outputTokens = json.usage.output_tokens || 0;
+          }
+          if (json.type === 'message_stop') {
+            yield {
+              usage: {
+                prompt_tokens: inputTokens,
+                completion_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens,
+              },
+            };
+            return;
+          }
         } catch {
           // skip malformed JSON
         }

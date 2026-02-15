@@ -99,6 +99,15 @@ export async function* streamChat(messages, options = {}) {
           if (text) {
             yield text;
           }
+          if (json.usageMetadata) {
+            yield {
+              usage: {
+                prompt_tokens: json.usageMetadata.promptTokenCount || 0,
+                completion_tokens: json.usageMetadata.candidatesTokenCount || 0,
+                total_tokens: json.usageMetadata.totalTokenCount || 0,
+              },
+            };
+          }
         } catch {
           // skip malformed JSON
         }

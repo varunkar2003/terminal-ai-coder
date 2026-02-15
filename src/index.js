@@ -14,6 +14,9 @@ import { grepSearch } from './tools/grepSearch.js';
 
 const conversation = new Conversation();
 
+// Cumulative token usage tracking
+const sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
 async function startupChecks() {
   const config = getConfig();
   const provider = await getProvider();
@@ -375,8 +378,14 @@ async function chat(userInput) {
     const stream = provider.streamChat(messages);
     let firstToken = true;
     let tokenCount = 0;
+    let operationUsage = null;
 
     for await (const token of stream) {
+      // Usage info yielded as object at end of stream
+      if (typeof token === 'object' && token.usage) {
+        operationUsage = token.usage;
+        continue;
+      }
       if (firstToken) {
         const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
         stopSpinner();
@@ -394,10 +403,24 @@ async function chat(userInput) {
     const fullResponse = renderer.getFullText();
     conversation.addAssistant(fullResponse);
 
+    // Update cumulative usage
+    if (operationUsage) {
+      sessionUsage.prompt_tokens += operationUsage.prompt_tokens;
+      sessionUsage.completion_tokens += operationUsage.completion_tokens;
+      sessionUsage.total_tokens += operationUsage.total_tokens;
+    }
+
     // Stats line
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     const tokensPerSec = (tokenCount / ((Date.now() - startTime) / 1000)).toFixed(1);
-    console.log(chalk.gray(`  [${tokenCount} tokens · ${totalTime}s · ${tokensPerSec} tok/s]`));
+    let statsLine = `  [${tokenCount} chunks · ${totalTime}s · ${tokensPerSec} chunks/s]`;
+    console.log(chalk.gray(statsLine));
+
+    // Token usage line (per-operation)
+    if (operationUsage) {
+      const usageLine = `  [tokens: ${operationUsage.prompt_tokens} in + ${operationUsage.completion_tokens} out = ${operationUsage.total_tokens} · session total: ${sessionUsage.total_tokens}]`;
+      console.log(chalk.gray(usageLine));
+    }
 
     // Re-render with markdown formatting
     console.log();

@@ -30,6 +30,7 @@ export async function* streamChat(messages, options = {}) {
       model,
       messages,
       stream: true,
+      stream_options: { include_usage: true },
       temperature: options.temperature ?? config.temperature,
     }),
   });
@@ -64,6 +65,15 @@ export async function* streamChat(messages, options = {}) {
           const content = json.choices?.[0]?.delta?.content;
           if (content) {
             yield content;
+          }
+          if (json.usage) {
+            yield {
+              usage: {
+                prompt_tokens: json.usage.prompt_tokens || 0,
+                completion_tokens: json.usage.completion_tokens || 0,
+                total_tokens: json.usage.total_tokens || 0,
+              },
+            };
           }
         } catch {
           // skip malformed JSON
