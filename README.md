@@ -2,7 +2,12 @@
 
 Terminal AI coding assistant powered by local models via Ollama. No cloud APIs, no API keys — complete privacy.
 
-## Quick Start
+## Prerequisites
+
+- **Node.js 18+** — [nodejs.org](https://nodejs.org)
+- **Ollama** — [ollama.ai](https://ollama.ai)
+
+## Quick Start (Automatic)
 
 ```bash
 git clone https://github.com/varunkar2003/terminal-ai-coder.git
@@ -11,10 +16,26 @@ bash setup.sh
 vkcoder
 ```
 
-## Prerequisites
+The setup script checks prerequisites, lets you pick a model, installs dependencies, and links the `vkcoder` command globally.
 
-- **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **Ollama** — [ollama.ai](https://ollama.ai)
+## Manual Installation
+
+If you prefer to set things up yourself:
+
+```bash
+git clone https://github.com/varunkar2003/terminal-ai-coder.git
+cd terminal-ai-coder
+npm install
+npm link          # makes 'vkcoder' available globally
+ollama pull qwen2.5-coder:7b   # or any model from the list below
+vkcoder
+```
+
+To run without global linking:
+
+```bash
+node bin/starcode.js
+```
 
 ## Usage
 
@@ -64,15 +85,17 @@ vkcoder> ```
 
 | Model | Size | Best For |
 |-------|------|----------|
-| `starcoder2:3b` | 1.7GB | Quick tasks, low-resource machines |
+| `qwen2.5-coder:7b` | 4.7GB | **Recommended** — best chat and coding ability |
+| `starcoder2:instruct` | 4.0GB | Good for following instructions |
 | `starcoder2:7b` | 4.0GB | Balanced quality and speed |
-| `starcoder2:instruct` | 4.0GB | Following complex instructions |
-| `qwen2.5-coder:7b` | 4.7GB | Strong general coding ability |
+| `starcoder2:3b` | 1.7GB | Low-resource machines (code completion only, not chat) |
 
-Pull a model manually:
+> **Note:** `starcoder2:3b` is a code completion model, not a chat model. It may produce repetitive output. Use `qwen2.5-coder:7b` for the best experience.
+
+Pull a model:
 
 ```bash
-ollama pull starcoder2:3b
+ollama pull qwen2.5-coder:7b
 ```
 
 ## Configuration
