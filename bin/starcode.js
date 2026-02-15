@@ -13,10 +13,10 @@ const args = process.argv.slice(2);
 // --help
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-StarCode v${pkg.version} — Terminal AI Coding Assistant
+VKCoder v${pkg.version} — Terminal AI Coding Assistant
 
 Usage:
-  starcode [options]
+  vkcoder [options]
 
 Options:
   --model <name>    Ollama model to use (default: starcoder2:3b)
@@ -34,14 +34,14 @@ Slash Commands (inside REPL):
   /model [name]                      Show or switch model
   /clear                             Clear conversation history
   /help                              Show help
-  /quit                              Exit StarCode
+  /quit                              Exit VKCoder
 `);
   process.exit(0);
 }
 
 // --version
 if (args.includes('--version') || args.includes('-v')) {
-  console.log(`StarCode v${pkg.version}`);
+  console.log(`VKCoder v${pkg.version}`);
   process.exit(0);
 }
 

@@ -1,11 +1,11 @@
 {
-  "name": "starcode",
+  "name": "vkcoder",
   "version": "1.0.0",
   "description": "Terminal AI coding assistant powered by local models via Ollama",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "starcode": "./bin/starcode.js"
+    "vkcoder": "./bin/starcode.js"
   },
   "scripts": {
     "start": "node bin/starcode.js",

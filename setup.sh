@@ -9,7 +9,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo ""
-echo -e "${CYAN}${BOLD}  ★ StarCode Setup${NC}"
+echo -e "${CYAN}${BOLD}  ★ VKCoder Setup${NC}"
 echo -e "${CYAN}  Terminal AI Coding Assistant${NC}"
 echo ""
 
@@ -86,23 +86,23 @@ echo -e "${GREEN}✓ Dependencies installed${NC}"
 
 # ─── Link Global Command ─────────────────────────────────────────
 echo ""
-echo -e "${BOLD}Linking 'starcode' command...${NC}"
+echo -e "${BOLD}Linking 'vkcoder' command...${NC}"
 npm link
-echo -e "${GREEN}✓ 'starcode' command available globally${NC}"
+echo -e "${GREEN}✓ 'vkcoder' command available globally${NC}"
 
 # ─── Write config ────────────────────────────────────────────────
 echo ""
-cat > .starcode.json << EOF
+cat > .vkcoder.json << EOF
 {
   "model": "${MODEL}"
 }
 EOF
-echo -e "${GREEN}✓ Config saved to .starcode.json${NC}"
+echo -e "${GREEN}✓ Config saved to .vkcoder.json${NC}"
 
 # ─── Done ─────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}${BOLD}  ★ Setup complete!${NC}"
 echo ""
-echo -e "  Run ${CYAN}starcode${NC} to start the assistant"
-echo -e "  Run ${CYAN}starcode --help${NC} for options"
+echo -e "  Run ${CYAN}vkcoder${NC} to start the assistant"
+echo -e "  Run ${CYAN}vkcoder --help${NC} for options"
 echo ""

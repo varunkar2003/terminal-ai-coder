@@ -14,7 +14,7 @@ function getReadline() {
   return rl;
 }
 
-export function prompt(promptText = `${chalk.cyan('starcode')}${chalk.gray('>')} `) {
+export function prompt(promptText = `${chalk.cyan('vkcoder')}${chalk.gray('>')} `) {
   return new Promise((resolve) => {
     getReadline().question(promptText, (answer) => {
       resolve(answer);

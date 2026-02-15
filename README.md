@@ -1,14 +1,14 @@
-# StarCode
+# VKCoder
 
 Terminal AI coding assistant powered by local models via Ollama. No cloud APIs, no API keys — complete privacy.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/yourusername/starcode.git
-cd starcode
+git clone https://github.com/varunkar2003/terminal-ai-coder.git
+cd terminal-ai-coder
 bash setup.sh
-starcode
+vkcoder
 ```
 
 ## Prerequisites
@@ -21,14 +21,14 @@ starcode
 ### Interactive Mode
 
 ```bash
-starcode                          # Start the REPL
-starcode --model qwen2.5-coder:7b  # Use a specific model
+vkcoder                          # Start the REPL
+vkcoder --model qwen2.5-coder:7b  # Use a specific model
 ```
 
 ### Single Question Mode
 
 ```bash
-starcode -q "How do I reverse a string in Python?"
+vkcoder -q "How do I reverse a string in Python?"
 ```
 
 ### Slash Commands
@@ -45,14 +45,14 @@ starcode -q "How do I reverse a string in Python?"
 | `/model [name]` | Show or switch the active model |
 | `/clear` | Clear conversation history |
 | `/help` | Show available commands |
-| `/quit` | Exit StarCode |
+| `/quit` | Exit VKCoder |
 
 ### Multi-line Input
 
 Start a line with triple backticks to enter multi-line mode:
 
 ```
-starcode> ```
+vkcoder> ```
   (multi-line mode — enter ``` to finish)
 ... function hello() {
 ...   return "world";
@@ -77,7 +77,7 @@ ollama pull starcoder2:3b
 
 ## Configuration
 
-Create a `.starcode.json` in your project root to customize behavior:
+Create a `.vkcoder.json` in your project root to customize behavior:
 
 ```json
 {
@@ -93,20 +93,20 @@ Create a `.starcode.json` in your project root to customize behavior:
 Use the included `Modelfile` for optimized coding parameters:
 
 ```bash
-ollama create starcode -f Modelfile
-starcode --model starcode
+ollama create vkcoder -f Modelfile
+vkcoder --model vkcoder
 ```
 
 ## VS Code Integration
 
 The `.vscode/` directory includes:
 
-- **tasks.json** — Launch StarCode via `Ctrl+Shift+P` → "Run Task" → "StarCode: Launch"
-- **settings.json** — Terminal profile for StarCode (click the dropdown arrow in the terminal panel)
+- **tasks.json** — Launch VKCoder via `Ctrl+Shift+P` → "Run Task" → "VKCoder: Launch"
+- **settings.json** — Terminal profile for VKCoder (click the dropdown arrow in the terminal panel)
 
 ## Project Context
 
-StarCode automatically detects your project type and provides context to the model:
+VKCoder automatically detects your project type and provides context to the model:
 
 - **Node.js** — reads `package.json` (name, deps, scripts)
 - **Python** — detects `requirements.txt` or `pyproject.toml`

@@ -6,7 +6,7 @@ const defaults = {
   model: 'starcoder2:3b',
   temperature: 0.2,
   contextWindow: 8192,
-  systemPrompt: `You are StarCode, a helpful AI coding assistant running locally via Ollama.
+  systemPrompt: `You are VKCoder, a helpful AI coding assistant running locally via Ollama.
 You help developers write, debug, and understand code directly in the terminal.
 
 Guidelines:
@@ -19,7 +19,7 @@ Guidelines:
 };
 
 function loadProjectConfig() {
-  const configPath = join(process.cwd(), '.starcode.json');
+  const configPath = join(process.cwd(), '.vkcoder.json');
   if (existsSync(configPath)) {
     try {
       const content = readFileSync(configPath, 'utf-8');

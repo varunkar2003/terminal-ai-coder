@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "StarCode: Launch",
+      "label": "VKCoder: Launch",
       "type": "shell",
       "command": "node",
       "args": ["${workspaceFolder}/bin/starcode.js"],
@@ -15,7 +15,7 @@
       "problemMatcher": []
     },
     {
-      "label": "StarCode: Launch (Custom Model)",
+      "label": "VKCoder: Launch (Custom Model)",
       "type": "shell",
       "command": "node",
       "args": ["${workspaceFolder}/bin/starcode.js", "--model", "${input:modelName}"],

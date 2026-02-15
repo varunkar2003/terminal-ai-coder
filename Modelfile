@@ -1,4 +1,4 @@
-# StarCode Modelfile — Optimized parameters for coding assistance
+# VKCoder Modelfile — Optimized parameters for coding assistance
 # Usage: ollama create starcode -f Modelfile
 
 FROM starcoder2:3b
@@ -11,4 +11,4 @@ PARAMETER stop "<|endoftext|>"
 PARAMETER stop "```\n\n"
 PARAMETER num_ctx 8192
 
-SYSTEM """You are StarCode, a helpful AI coding assistant. You help developers write, debug, and understand code. Give concise answers with code examples. Use markdown formatting."""
+SYSTEM """You are VKCoder, a helpful AI coding assistant. You help developers write, debug, and understand code. Give concise answers with code examples. Use markdown formatting."""

@@ -113,7 +113,7 @@ async function handleSlashCommand(input) {
 
 function showHelp() {
   const help = `
-${chalk.cyan.bold('StarCode Commands')}
+${chalk.cyan.bold('VKCoder Commands')}
 
   ${chalk.yellow('/read')} <file> [--lines start-end]   Read a file
   ${chalk.yellow('/write')} <file> <content>            Write content to a file
@@ -126,7 +126,7 @@ ${chalk.cyan.bold('StarCode Commands')}
   ${chalk.yellow('/model')} [name]                      Show or switch model
   ${chalk.yellow('/clear')}                             Clear conversation history
   ${chalk.yellow('/help')}                              Show this help
-  ${chalk.yellow('/quit')}                              Exit StarCode
+  ${chalk.yellow('/quit')}                              Exit VKCoder
 
 ${chalk.gray('Tip: Use triple backticks (\`\`\`) to enter multi-line input')}
 `;
@@ -348,7 +348,7 @@ export async function startRepl(options = {}) {
 
   // Banner
   console.log();
-  console.log(chalk.cyan.bold('  ★ StarCode') + chalk.gray(' — Terminal AI Coding Assistant'));
+  console.log(chalk.cyan.bold('  ★ VKCoder') + chalk.gray(' — Terminal AI Coding Assistant'));
   console.log(chalk.gray('  Powered by local models via Ollama'));
   renderDivider();
   console.log();

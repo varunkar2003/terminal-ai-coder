@@ -1,18 +1,18 @@
 {
   "terminal.integrated.profiles.osx": {
-    "StarCode": {
+    "VKCoder": {
       "path": "node",
       "args": ["${workspaceFolder}/bin/starcode.js"]
     }
   },
   "terminal.integrated.profiles.linux": {
-    "StarCode": {
+    "VKCoder": {
       "path": "node",
       "args": ["${workspaceFolder}/bin/starcode.js"]
     }
   },
   "terminal.integrated.profiles.windows": {
-    "StarCode": {
+    "VKCoder": {
       "path": "node",
       "args": ["${workspaceFolder}/bin/starcode.js"]
     }
