@@ -4,7 +4,7 @@ import { checkOllamaHealth, checkModelAvailable, streamChat, listModels } from '
 import { Conversation } from './context/conversation.js';
 import { getProjectContext } from './context/project.js';
 import { prompt, multiLinePrompt, confirm, closePrompt } from './ui/prompt.js';
-import { startSpinner, stopSpinner, succeedSpinner, failSpinner } from './ui/spinner.js';
+import { startSpinner, stopSpinner, updateSpinner, succeedSpinner, failSpinner } from './ui/spinner.js';
 import { renderMarkdown, renderError, renderSuccess, renderWarning, renderToolOutput, renderDivider, StreamRenderer } from './ui/renderer.js';
 import { readFile, parseReadArgs } from './tools/fileReader.js';
 import { writeFile, editFile, parseWriteArgs } from './tools/fileWriter.js';
@@ -27,7 +27,7 @@ async function startupChecks() {
   }
   succeedSpinner('Ollama connected');
 
-  startSpinner(`Checking model ${config.model}...`);
+  startSpinner(`Looking for model ${chalk.cyan(config.model)}...`);
   const available = await checkModelAvailable(config.model);
   if (!available) {
     failSpinner(`Model ${config.model} not found`);
@@ -45,7 +45,7 @@ async function startupChecks() {
 
     process.exit(1);
   }
-  succeedSpinner(`Model ${config.model} ready`);
+  succeedSpinner(`Model ${config.model} ready (context: ${config.contextWindow} tokens)`);
 }
 
 function injectProjectContext() {
@@ -77,9 +77,14 @@ async function handleSlashCommand(input) {
       renderSuccess('Conversation cleared');
       return true;
 
-    case '/context':
-      renderToolOutput('Project Context', getProjectContext());
+    case '/context': {
+      const ctx = getProjectContext();
+      const tokens = conversation.getTokenEstimate();
+      const msgs = conversation.length;
+      renderToolOutput('Project Context', ctx);
+      console.log(chalk.gray(`  Conversation: ${msgs} messages, ~${tokens} tokens used\n`));
       return true;
+    }
 
     case '/model':
       await handleModelCommand(args);
@@ -293,20 +298,30 @@ async function handleGrepCommand(args) {
 }
 
 async function chat(userInput) {
+  const config = getConfig();
   conversation.addUser(userInput);
 
-  startSpinner('Thinking...');
+  const startTime = Date.now();
+  startSpinner(`Sending to ${chalk.cyan(config.model)}...`);
   const renderer = new StreamRenderer();
 
   try {
-    const stream = streamChat(conversation.getMessages());
+    const messages = conversation.getMessages();
+    updateSpinner(`Waiting for ${chalk.cyan(config.model)} to respond...`);
+
+    const stream = streamChat(messages);
     let firstToken = true;
+    let tokenCount = 0;
 
     for await (const token of stream) {
       if (firstToken) {
+        const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
         stopSpinner();
+        console.log(chalk.gray(`  [${config.model} · first token in ${waitTime}s]`));
+        console.log();
         firstToken = false;
       }
+      tokenCount++;
       renderer.write(token);
     }
 
@@ -316,6 +331,11 @@ async function chat(userInput) {
     const fullResponse = renderer.getFullText();
     conversation.addAssistant(fullResponse);
 
+    // Stats line
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    const tokensPerSec = (tokenCount / ((Date.now() - startTime) / 1000)).toFixed(1);
+    console.log(chalk.gray(`  [${tokenCount} tokens · ${totalTime}s · ${tokensPerSec} tok/s]`));
+
     // Re-render with markdown formatting
     console.log();
     const formatted = renderMarkdown(fullResponse);
@@ -324,7 +344,8 @@ async function chat(userInput) {
   } catch (err) {
     stopSpinner();
     renderer.end();
-    renderError(`Chat error: ${err.message || err}`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    renderError(`Chat error after ${elapsed}s: ${err.message || err}`);
 
     // Remove the failed user message
     conversation.messages.pop();
