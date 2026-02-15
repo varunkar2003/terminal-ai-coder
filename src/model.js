@@ -38,44 +38,55 @@ export async function* streamChat(messages, options = {}) {
     stream: true,
     options: {
       temperature: options.temperature ?? temperature,
+      num_ctx: config.contextWindow,
     },
   };
 
-  const res = await fetch(`${ollamaHost}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${ollamaHost}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error(`Cannot connect to Ollama: ${err.cause?.code || err.message}. Is Ollama running?`);
+  }
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Ollama API error (${res.status}): ${errText}`);
+    let errText;
+    try { errText = await res.text(); } catch { errText = 'unknown'; }
+    throw new Error(`Ollama error (${res.status}): ${errText}`);
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const json = JSON.parse(line);
-        if (json.message?.content) {
-          yield json.message.content;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const json = JSON.parse(line);
+          if (json.message?.content) {
+            yield json.message.content;
+          }
+          if (json.done) return;
+        } catch {
+          // skip malformed JSON lines
         }
-        if (json.done) return;
-      } catch {
-        // skip malformed JSON lines
       }
     }
+  } catch (err) {
+    throw new Error(`Stream error: ${err.message}`);
   }
 
   // Process remaining buffer

@@ -112,24 +112,11 @@ export function getProjectContext() {
   const manifest = readManifest(marker);
   const tree = getDirectoryTree(cwd);
 
-  let context = `## Project Context\n`;
-  context += `- **Directory**: ${projectName}\n`;
-  context += `- **Type**: ${type}\n`;
-  if (gitBranch) context += `- **Git Branch**: ${gitBranch}\n`;
+  let context = `Project: ${projectName} (${type})`;
+  if (gitBranch) context += ` [${gitBranch}]`;
 
   if (manifest && typeof manifest === 'object' && manifest.name) {
-    context += `- **Package**: ${manifest.name}@${manifest.version}\n`;
-    if (manifest.description) context += `- **Description**: ${manifest.description}\n`;
-    if (manifest.dependencies.length > 0) {
-      context += `- **Dependencies**: ${manifest.dependencies.join(', ')}\n`;
-    }
-    if (manifest.scripts.length > 0) {
-      context += `- **Scripts**: ${manifest.scripts.join(', ')}\n`;
-    }
-  }
-
-  if (tree) {
-    context += `\n### Directory Structure\n\`\`\`\n${tree}\`\`\`\n`;
+    context += `\nPackage: ${manifest.name}@${manifest.version}`;
   }
 
   return context;

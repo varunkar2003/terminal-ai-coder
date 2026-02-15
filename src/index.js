@@ -324,7 +324,7 @@ async function chat(userInput) {
   } catch (err) {
     stopSpinner();
     renderer.end();
-    renderError(`Chat error: ${err.message}`);
+    renderError(`Chat error: ${err.message || err}`);
 
     // Remove the failed user message
     conversation.messages.pop();
