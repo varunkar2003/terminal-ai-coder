@@ -3,7 +3,7 @@ import { join } from 'path';
 
 const defaults = {
   ollamaHost: 'http://localhost:11434',
-  model: 'starcoder2:3b',
+  model: 'qwen2.5-coder:7b',
   temperature: 0.2,
   contextWindow: 8192,
   systemPrompt: `You are VKCoder, a helpful AI coding assistant running locally via Ollama.
