@@ -1,7 +1,15 @@
 import { execSync } from 'child_process';
+import { platform } from 'os';
 
 const TIMEOUT_MS = 30_000;
 const MAX_OUTPUT = 50_000;
+
+function getShell() {
+  if (platform() === 'win32') {
+    return process.env.COMSPEC || 'cmd.exe';
+  }
+  return process.env.SHELL || '/bin/sh';
+}
 
 export function runCommand(command, options = {}) {
   const timeout = options.timeout || TIMEOUT_MS;
@@ -12,7 +20,7 @@ export function runCommand(command, options = {}) {
       timeout,
       maxBuffer: 1024 * 1024,
       encoding: 'utf-8',
-      shell: '/bin/sh',
+      shell: getShell(),
       env: {
         ...process.env,
         NO_COLOR: '1',

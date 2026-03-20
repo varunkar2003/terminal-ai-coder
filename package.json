@@ -24,12 +24,16 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "baileys": "github:WhiskeySockets/Baileys",
     "chalk": "^5.3.0",
     "cli-highlight": "^2.1.11",
     "glob": "^10.3.10",
     "marked": "^12.0.1",
     "marked-terminal": "^7.0.0",
     "ora": "^8.0.1",
+    "playwright-core": "^1.58.2",
+    "qrcode-terminal": "^0.12.0",
     "undici": "^7.22.0"
   }
 }

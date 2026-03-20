@@ -57,18 +57,18 @@ fi
 echo ""
 echo -e "${BOLD}Select a coding model:${NC}"
 echo ""
-echo "  1) starcoder2:3b        (1.7GB  — Fast, good for small tasks)"
-echo "  2) starcoder2:7b        (4.0GB  — Balanced quality/speed)"
-echo "  3) starcoder2:instruct  (4.0GB  — Best for instructions)"
-echo "  4) qwen2.5-coder:7b    (4.7GB  — Strong general coding)"
+echo "  1) qwen3.5:4b           (3.4GB  — Recommended, strong coding + tool use)"
+echo "  2) qwen2.5-coder:7b     (4.7GB  — Strong general coding)"
+echo "  3) starcoder2:7b         (4.0GB  — Balanced quality/speed)"
+echo "  4) starcoder2:3b         (1.7GB  — Fast, low-resource machines)"
 echo ""
 read -p "Choose model [1-4, default 1]: " MODEL_CHOICE
 
 case "$MODEL_CHOICE" in
-  2) MODEL="starcoder2:7b" ;;
-  3) MODEL="starcoder2:instruct" ;;
-  4) MODEL="qwen2.5-coder:7b" ;;
-  *) MODEL="starcoder2:3b" ;;
+  2) MODEL="qwen2.5-coder:7b" ;;
+  3) MODEL="starcoder2:7b" ;;
+  4) MODEL="starcoder2:3b" ;;
+  *) MODEL="qwen3.5:4b" ;;
 esac
 
 echo ""

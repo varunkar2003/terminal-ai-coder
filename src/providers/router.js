@@ -1,7 +1,7 @@
 import { getConfig } from '../config.js';
 
 const PROVIDERS = {
-  ollama: { module: null, default_model: 'qwen2.5-coder:7b' },
+  ollama: { module: null, default_model: 'qwen3.5:4b' },
   openai: { module: null, default_model: 'gpt-4o' },
   anthropic: { module: null, default_model: 'claude-sonnet-4-20250514' },
   gemini: { module: null, default_model: 'gemini-2.0-flash' },

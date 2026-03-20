@@ -20,19 +20,25 @@ export async function* streamChat(messages, options = {}) {
 
   const model = options.model || config.model;
 
+  const body = {
+    model,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    temperature: options.temperature ?? config.temperature,
+  };
+
+  if (options.tools && options.tools.length > 0) {
+    body.tools = options.tools;
+  }
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      temperature: options.temperature ?? config.temperature,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -44,6 +50,9 @@ export async function* streamChat(messages, options = {}) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+
+  // Accumulate tool calls across streamed deltas
+  const toolCallAccum = {};
 
   try {
     while (true) {
@@ -58,14 +67,41 @@ export async function* streamChat(messages, options = {}) {
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const data = trimmed.slice(6);
-        if (data === '[DONE]') return;
+        if (data === '[DONE]') {
+          // Yield accumulated tool calls if any
+          const ids = Object.keys(toolCallAccum);
+          if (ids.length > 0) {
+            const toolCalls = ids.map(id => toolCallAccum[id]);
+            yield { tool_calls: toolCalls };
+          }
+          return;
+        }
 
         try {
           const json = JSON.parse(data);
-          const content = json.choices?.[0]?.delta?.content;
-          if (content) {
-            yield content;
+          const delta = json.choices?.[0]?.delta;
+
+          if (delta?.content) {
+            yield delta.content;
           }
+
+          // Accumulate streaming tool calls
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (!toolCallAccum[idx]) {
+                toolCallAccum[idx] = {
+                  id: tc.id || '',
+                  type: 'function',
+                  function: { name: '', arguments: '' },
+                };
+              }
+              if (tc.id) toolCallAccum[idx].id = tc.id;
+              if (tc.function?.name) toolCallAccum[idx].function.name += tc.function.name;
+              if (tc.function?.arguments) toolCallAccum[idx].function.arguments += tc.function.arguments;
+            }
+          }
+
           if (json.usage) {
             yield {
               usage: {
@@ -82,6 +118,13 @@ export async function* streamChat(messages, options = {}) {
     }
   } catch (err) {
     throw new Error(`OpenAI stream error: ${err.message}`);
+  }
+
+  // Yield any remaining tool calls
+  const ids = Object.keys(toolCallAccum);
+  if (ids.length > 0) {
+    const toolCalls = ids.map(id => toolCallAccum[id]);
+    yield { tool_calls: toolCalls };
   }
 }
 

@@ -117,6 +117,16 @@ export function getProjectContext() {
 
   if (manifest && typeof manifest === 'object' && manifest.name) {
     context += `\nPackage: ${manifest.name}@${manifest.version}`;
+    if (manifest.dependencies?.length) {
+      context += `\nDependencies: ${manifest.dependencies.join(', ')}`;
+    }
+    if (manifest.scripts?.length) {
+      context += `\nScripts: ${manifest.scripts.join(', ')}`;
+    }
+  }
+
+  if (tree) {
+    context += `\n\nProject structure:\n${tree}`;
   }
 
   return context;

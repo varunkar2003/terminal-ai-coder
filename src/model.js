@@ -35,20 +35,53 @@ export async function checkModelAvailable(modelName) {
   }
 }
 
+// Convert messages to Ollama's expected format:
+// - assistant tool_calls: arguments must be object, not string
+// - tool results: only role + content (no extra fields)
+function convertMessagesForOllama(messages) {
+  return messages.map(msg => {
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      return {
+        role: 'assistant',
+        content: msg.content || '',
+        tool_calls: msg.tool_calls.map(tc => ({
+          function: {
+            name: tc.function.name,
+            arguments: typeof tc.function.arguments === 'string'
+              ? JSON.parse(tc.function.arguments)
+              : tc.function.arguments,
+          },
+        })),
+      };
+    }
+    if (msg.role === 'tool') {
+      return { role: 'tool', content: msg.content || '' };
+    }
+    return msg;
+  });
+}
+
 export async function* streamChat(messages, options = {}) {
   const config = getConfig();
   const { ollamaHost, model, temperature } = config;
   const modelName = options.model || model;
 
+  const ollamaMessages = convertMessagesForOllama(messages);
+
   const body = {
     model: modelName,
-    messages,
+    messages: ollamaMessages,
     stream: true,
     options: {
       temperature: options.temperature ?? temperature,
       num_ctx: config.contextWindow,
     },
   };
+
+  // Add tool definitions if provided
+  if (options.tools && options.tools.length > 0) {
+    body.tools = options.tools;
+  }
 
   let res;
   try {
@@ -71,6 +104,7 @@ export async function* streamChat(messages, options = {}) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  const toolCalls = [];
 
   try {
     while (true) {
@@ -88,7 +122,25 @@ export async function* streamChat(messages, options = {}) {
           if (json.message?.content) {
             yield json.message.content;
           }
+          // Collect tool calls from Ollama
+          if (json.message?.tool_calls) {
+            for (const tc of json.message.tool_calls) {
+              toolCalls.push({
+                id: `ollama_${Date.now()}_${toolCalls.length}`,
+                type: 'function',
+                function: {
+                  name: tc.function.name,
+                  arguments: typeof tc.function.arguments === 'string'
+                    ? tc.function.arguments
+                    : JSON.stringify(tc.function.arguments),
+                },
+              });
+            }
+          }
           if (json.done) {
+            if (toolCalls.length > 0) {
+              yield { tool_calls: toolCalls };
+            }
             yield {
               usage: {
                 prompt_tokens: json.prompt_eval_count || 0,
@@ -114,7 +166,24 @@ export async function* streamChat(messages, options = {}) {
       if (json.message?.content) {
         yield json.message.content;
       }
+      if (json.message?.tool_calls) {
+        for (const tc of json.message.tool_calls) {
+          toolCalls.push({
+            id: `ollama_${Date.now()}_${toolCalls.length}`,
+            type: 'function',
+            function: {
+              name: tc.function.name,
+              arguments: typeof tc.function.arguments === 'string'
+                ? tc.function.arguments
+                : JSON.stringify(tc.function.arguments),
+            },
+          });
+        }
+      }
       if (json.done) {
+        if (toolCalls.length > 0) {
+          yield { tool_calls: toolCalls };
+        }
         yield {
           usage: {
             prompt_tokens: json.prompt_eval_count || 0,

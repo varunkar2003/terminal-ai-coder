@@ -10,6 +10,66 @@ function getApiKey() {
   return process.env.ANTHROPIC_API_KEY;
 }
 
+function convertToolsForAnthropic(tools) {
+  if (!tools || tools.length === 0) return undefined;
+  return tools.map(t => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters,
+  }));
+}
+
+function convertMessagesForAnthropic(messages) {
+  let systemText = '';
+  const filtered = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      systemText += (systemText ? '\n' : '') + msg.content;
+      continue;
+    }
+
+    // Handle assistant messages with tool calls
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      const content = [];
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content });
+      }
+      for (const tc of msg.tool_calls) {
+        content.push({
+          type: 'tool_use',
+          id: tc.id,
+          name: tc.function.name,
+          input: JSON.parse(tc.function.arguments),
+        });
+      }
+      filtered.push({ role: 'assistant', content });
+      continue;
+    }
+
+    // Handle tool result messages
+    if (msg.role === 'tool') {
+      // Anthropic expects tool results as user messages with tool_result content
+      const last = filtered[filtered.length - 1];
+      const block = {
+        type: 'tool_result',
+        tool_use_id: msg.tool_call_id,
+        content: msg.content,
+      };
+      if (last && last.role === 'user' && Array.isArray(last.content)) {
+        last.content.push(block);
+      } else {
+        filtered.push({ role: 'user', content: [block] });
+      }
+      continue;
+    }
+
+    filtered.push({ role: msg.role, content: msg.content });
+  }
+
+  return { systemText, filtered };
+}
+
 export async function* streamChat(messages, options = {}) {
   const config = getConfig();
   const apiKey = getApiKey();
@@ -18,21 +78,11 @@ export async function* streamChat(messages, options = {}) {
   }
 
   const model = options.model || config.model;
-
-  // Extract system message from messages array
-  let systemText = '';
-  const filteredMessages = [];
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemText += (systemText ? '\n' : '') + msg.content;
-    } else {
-      filteredMessages.push(msg);
-    }
-  }
+  const { systemText, filtered } = convertMessagesForAnthropic(messages);
 
   const body = {
     model,
-    messages: filteredMessages,
+    messages: filtered,
     max_tokens: 4096,
     stream: true,
     temperature: options.temperature ?? config.temperature,
@@ -40,6 +90,11 @@ export async function* streamChat(messages, options = {}) {
 
   if (systemText) {
     body.system = systemText;
+  }
+
+  const anthropicTools = convertToolsForAnthropic(options.tools);
+  if (anthropicTools) {
+    body.tools = anthropicTools;
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -64,6 +119,11 @@ export async function* streamChat(messages, options = {}) {
   let inputTokens = 0;
   let outputTokens = 0;
 
+  // Tool call accumulation
+  const toolCalls = [];
+  let currentToolCall = null;
+  let toolJsonBuffer = '';
+
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -80,19 +140,50 @@ export async function* streamChat(messages, options = {}) {
 
         try {
           const json = JSON.parse(data);
+
           if (json.type === 'message_start' && json.message?.usage) {
             inputTokens = json.message.usage.input_tokens || 0;
           }
-          if (json.type === 'content_block_delta') {
-            const text = json.delta?.text;
-            if (text) {
-              yield text;
+
+          if (json.type === 'content_block_start') {
+            if (json.content_block?.type === 'tool_use') {
+              currentToolCall = {
+                id: json.content_block.id,
+                type: 'function',
+                function: {
+                  name: json.content_block.name,
+                  arguments: '',
+                },
+              };
+              toolJsonBuffer = '';
             }
           }
+
+          if (json.type === 'content_block_delta') {
+            if (json.delta?.type === 'text_delta') {
+              const text = json.delta.text;
+              if (text) yield text;
+            }
+            if (json.delta?.type === 'input_json_delta' && currentToolCall) {
+              toolJsonBuffer += json.delta.partial_json || '';
+            }
+          }
+
+          if (json.type === 'content_block_stop' && currentToolCall) {
+            currentToolCall.function.arguments = toolJsonBuffer;
+            toolCalls.push(currentToolCall);
+            currentToolCall = null;
+            toolJsonBuffer = '';
+          }
+
           if (json.type === 'message_delta' && json.usage) {
             outputTokens = json.usage.output_tokens || 0;
           }
+
           if (json.type === 'message_stop') {
+            if (toolCalls.length > 0) {
+              yield { tool_calls: toolCalls };
+            }
             yield {
               usage: {
                 prompt_tokens: inputTokens,

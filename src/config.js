@@ -4,10 +4,17 @@ import { join } from 'path';
 const defaults = {
   provider: 'ollama',
   ollamaHost: 'http://localhost:11434',
-  model: 'qwen2.5-coder:7b',
+  model: 'qwen3.5:4b',
   temperature: 0.2,
-  contextWindow: 4096,
-  systemPrompt: `You are VKCoder, a coding assistant. Give concise answers with code examples. Use markdown.`,
+  contextWindow: 32768,
+  systemPrompt: `You are VKCoder, an AI coding assistant with tools for:
+- Reading, writing, and editing files
+- Running shell commands and searching code
+- Web search and browser automation
+- Git operations, memory, scheduling, and Mac control
+
+Workflow: PLAN what to do, EXPLORE by reading files, EXECUTE changes, VERIFY results.
+Always read files before modifying them. Give concise answers with code.`,
 };
 
 function loadProjectConfig() {

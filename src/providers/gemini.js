@@ -11,9 +11,6 @@ function getApiKey() {
 }
 
 function convertMessages(messages) {
-  // Convert OpenAI-style messages to Gemini format
-  // system/user -> "user" role, assistant -> "model" role
-  // Merge consecutive same-role messages
   const contents = [];
   let systemText = '';
 
@@ -23,18 +20,51 @@ function convertMessages(messages) {
       continue;
     }
 
+    // Handle tool result messages
+    if (msg.role === 'tool') {
+      const last = contents[contents.length - 1];
+      const part = {
+        functionResponse: {
+          name: msg.name || 'unknown',
+          response: { result: msg.content },
+        },
+      };
+      if (last && last.role === 'function') {
+        last.parts.push(part);
+      } else {
+        contents.push({ role: 'function', parts: [part] });
+      }
+      continue;
+    }
+
+    // Handle assistant messages with tool calls
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      const parts = [];
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+      for (const tc of msg.tool_calls) {
+        parts.push({
+          functionCall: {
+            name: tc.function.name,
+            args: JSON.parse(tc.function.arguments),
+          },
+        });
+      }
+      contents.push({ role: 'model', parts });
+      continue;
+    }
+
     const role = msg.role === 'assistant' ? 'model' : 'user';
     const last = contents[contents.length - 1];
 
     if (last && last.role === role) {
-      // Merge consecutive same-role messages
       last.parts.push({ text: msg.content });
     } else {
       contents.push({ role, parts: [{ text: msg.content }] });
     }
   }
 
-  // Prepend system text as a user message if present
   if (systemText) {
     if (contents.length > 0 && contents[0].role === 'user') {
       contents[0].parts.unshift({ text: systemText });
@@ -56,17 +86,32 @@ export async function* streamChat(messages, options = {}) {
   const model = options.model || config.model;
   const contents = convertMessages(messages);
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+
+  const requestBody = {
+    contents,
+    generationConfig: {
+      temperature: options.temperature ?? config.temperature,
+    },
+  };
+
+  if (options.tools && options.tools.length > 0) {
+    requestBody.tools = [{
+      functionDeclarations: options.tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters,
+      })),
+    }];
+  }
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents,
-      generationConfig: {
-        temperature: options.temperature ?? config.temperature,
-      },
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify(requestBody),
   });
 
   if (!res.ok) {
@@ -78,6 +123,7 @@ export async function* streamChat(messages, options = {}) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  const toolCalls = [];
 
   try {
     while (true) {
@@ -95,10 +141,24 @@ export async function* streamChat(messages, options = {}) {
 
         try {
           const json = JSON.parse(data);
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            yield text;
+          const parts = json.candidates?.[0]?.content?.parts || [];
+
+          for (const part of parts) {
+            if (part.text) {
+              yield part.text;
+            }
+            if (part.functionCall) {
+              toolCalls.push({
+                id: `gemini_${Date.now()}_${toolCalls.length}`,
+                type: 'function',
+                function: {
+                  name: part.functionCall.name,
+                  arguments: JSON.stringify(part.functionCall.args || {}),
+                },
+              });
+            }
           }
+
           if (json.usageMetadata) {
             yield {
               usage: {
@@ -115,6 +175,10 @@ export async function* streamChat(messages, options = {}) {
     }
   } catch (err) {
     throw new Error(`Gemini stream error: ${err.message}`);
+  }
+
+  if (toolCalls.length > 0) {
+    yield { tool_calls: toolCalls };
   }
 }
 

@@ -5,17 +5,23 @@ import { Conversation } from './context/conversation.js';
 import { getProjectContext } from './context/project.js';
 import { prompt, multiLinePrompt, confirm, closePrompt } from './ui/prompt.js';
 import { startSpinner, stopSpinner, updateSpinner, succeedSpinner, failSpinner } from './ui/spinner.js';
-import { renderMarkdown, renderError, renderSuccess, renderWarning, renderToolOutput, renderDivider, StreamRenderer } from './ui/renderer.js';
+import { renderError, renderSuccess, renderWarning, renderToolOutput, renderDivider } from './ui/renderer.js';
 import { readFile, parseReadArgs } from './tools/fileReader.js';
 import { writeFile, editFile, parseWriteArgs } from './tools/fileWriter.js';
 import { runCommand } from './tools/executor.js';
 import { globSearch } from './tools/globSearch.js';
 import { grepSearch } from './tools/grepSearch.js';
+import { TOOL_DEFINITIONS } from './tools/definitions.js';
+import { runAgent } from './agent.js';
+import { memoryList } from './tools/memory.js';
 
 const conversation = new Conversation();
 
 // Cumulative token usage tracking
 const sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+const MAX_TOOL_ROUNDS = 15;
+let globalAutoApprove = false;
 
 async function startupChecks() {
   const config = getConfig();
@@ -33,7 +39,6 @@ async function startupChecks() {
   }
   succeedSpinner(`${provider.getProviderName()} connected`);
 
-  // Only check model availability for Ollama (local models)
   if (config.provider === 'ollama') {
     const { checkModelAvailable } = await import('./providers/ollama.js');
     startSpinner(`Looking for model ${chalk.cyan(config.model)}...`);
@@ -63,9 +68,15 @@ async function startupChecks() {
 function injectProjectContext() {
   const config = getConfig();
   const projectContext = getProjectContext();
-  const fullSystemPrompt = `${config.systemPrompt}\n\n${projectContext}`;
+  const memories = memoryList();
+  const memorySection = memories !== 'No memories stored yet.'
+    ? `\n\nUser memories:\n${memories}`
+    : '';
+  const fullSystemPrompt = `${config.systemPrompt}\n\n${projectContext}${memorySection}`;
   conversation.setSystemPrompt(fullSystemPrompt);
 }
+
+// ─── Slash Commands ─────────────────────────────────────────────────────────
 
 async function handleSlashCommand(input) {
   const parts = input.trim().split(/\s+/);
@@ -79,7 +90,7 @@ async function handleSlashCommand(input) {
 
     case '/quit':
     case '/exit':
-      console.log(chalk.gray('\nGoodbye! 👋'));
+      console.log(chalk.gray('\nGoodbye!'));
       closePrompt();
       process.exit(0);
 
@@ -97,6 +108,10 @@ async function handleSlashCommand(input) {
       console.log(chalk.gray(`  Conversation: ${msgs} messages, ~${tokens} tokens used\n`));
       return true;
     }
+
+    case '/history':
+      await handleHistoryCommand(args);
+      return true;
 
     case '/model':
       await handleModelCommand(args);
@@ -146,13 +161,44 @@ ${chalk.cyan.bold('VKCoder Commands')}
   ${chalk.yellow('/context')}                           Show project context
   ${chalk.yellow('/model')} [name]                      Show or switch model
   ${chalk.yellow('/provider')} [name]                   Show or switch provider
+  ${chalk.yellow('/history')} [clear]                   Show or clear history
   ${chalk.yellow('/clear')}                             Clear conversation history
   ${chalk.yellow('/help')}                              Show this help
   ${chalk.yellow('/quit')}                              Exit VKCoder
 
 ${chalk.gray('Tip: Use triple backticks (\\`\\`\\`) to enter multi-line input')}
+${chalk.gray('The AI can use tools autonomously — just ask it to read, write, or run commands.')}
 `;
   console.log(help);
+}
+
+async function handleHistoryCommand(args) {
+  if (args === 'clear') {
+    conversation.clear();
+    injectProjectContext();
+    renderSuccess('Conversation history cleared');
+    return;
+  }
+
+  const msgs = conversation.length;
+  const tokens = conversation.getTokenEstimate();
+  console.log(`\n  ${chalk.cyan('Conversation:')} ${msgs} messages, ~${tokens} tokens`);
+
+  if (msgs > 0) {
+    console.log(chalk.gray('\n  Recent messages:'));
+    const messages = conversation.getMessages().filter(m => m.role !== 'system');
+    const recent = messages.slice(-6);
+    for (const msg of recent) {
+      const role = msg.role === 'user'
+        ? chalk.green('You')
+        : msg.role === 'assistant'
+          ? chalk.cyan('AI')
+          : chalk.yellow(msg.role);
+      const preview = (msg.content || '(tool call)').substring(0, 80).replace(/\n/g, ' ');
+      console.log(`  ${role}: ${chalk.gray(preview)}${(msg.content || '').length > 80 ? '...' : ''}`);
+    }
+  }
+  console.log(chalk.gray(`\n  Use ${chalk.yellow('/history clear')} to clear\n`));
 }
 
 async function handleModelCommand(args) {
@@ -165,7 +211,7 @@ async function handleModelCommand(args) {
       const models = await provider.listModels();
       console.log(chalk.gray('\nAvailable models:'));
       for (const m of models) {
-        const marker = m.name === config.model ? chalk.green(' ← current') : '';
+        const marker = m.name === config.model ? chalk.green(' <- current') : '';
         const desc = m.description ? chalk.gray(` — ${m.description}`) : '';
         console.log(`  ${chalk.white(m.name)}${desc}${marker}`);
       }
@@ -181,7 +227,6 @@ async function handleProviderCommand(args) {
   const config = getConfig();
 
   if (!args) {
-    // Show current provider and list all available
     const provider = await getProvider();
     console.log(`Current provider: ${chalk.cyan(provider.getProviderName())} (${config.provider})`);
     console.log(`Current model: ${chalk.cyan(config.model)}`);
@@ -189,7 +234,7 @@ async function handleProviderCommand(args) {
 
     for (const name of getProviderNames()) {
       const isCurrent = name === config.provider;
-      const marker = isCurrent ? chalk.green(' ← current') : '';
+      const marker = isCurrent ? chalk.green(' <- current') : '';
       const envVar = getKeyEnvVar(name);
       let keyStatus = '';
       if (envVar) {
@@ -202,7 +247,6 @@ async function handleProviderCommand(args) {
     return;
   }
 
-  // Switch provider
   const newProvider = args.toLowerCase();
   if (!isValidProvider(newProvider)) {
     renderError(`Unknown provider: ${args}. Valid providers: ${getProviderNames().join(', ')}`);
@@ -212,7 +256,6 @@ async function handleProviderCommand(args) {
   const defaultModel = getDefaultModel(newProvider);
   updateConfig({ provider: newProvider, model: defaultModel });
 
-  // Validate the new provider
   const provider = await getProvider(newProvider);
   const health = await provider.checkHealth();
   if (!health.ok) {
@@ -231,11 +274,9 @@ async function handleReadCommand(args) {
   try {
     const { filePath, lines } = parseReadArgs(args);
     const result = readFile(filePath, { lines });
-
     const header = lines
       ? `${filePath} (lines ${result.lineRange} of ${result.total})`
       : `${filePath} (${result.total} lines)`;
-
     renderToolOutput(header, result.content);
   } catch (err) {
     renderError(err.message);
@@ -250,21 +291,14 @@ async function handleWriteCommand(args) {
 
   try {
     const parsed = parseWriteArgs(args);
-
     if (parsed.mode === 'edit') {
       const ok = await confirm(`Edit ${parsed.filePath}?`);
-      if (!ok) {
-        renderWarning('Cancelled');
-        return;
-      }
+      if (!ok) { renderWarning('Cancelled'); return; }
       const result = editFile(parsed.filePath, parsed.search, parsed.replace);
       renderSuccess(`Edited ${result.path}`);
     } else {
       const ok = await confirm(`Write to ${parsed.filePath}?`);
-      if (!ok) {
-        renderWarning('Cancelled');
-        return;
-      }
+      if (!ok) { renderWarning('Cancelled'); return; }
       const result = writeFile(parsed.filePath, parsed.content);
       renderSuccess(`Created ${result.path} (${result.size} bytes)`);
     }
@@ -280,10 +314,7 @@ async function handleRunCommand(args) {
   }
 
   const ok = await confirm(`Run: ${chalk.yellow(args)}?`);
-  if (!ok) {
-    renderWarning('Cancelled');
-    return;
-  }
+  if (!ok) { renderWarning('Cancelled'); return; }
 
   startSpinner('Running command...');
   const result = runCommand(args);
@@ -293,33 +324,22 @@ async function handleRunCommand(args) {
     renderToolOutput(`$ ${args}`, result.output || '(no output)');
   } else {
     renderError(`Command failed (exit ${result.exitCode})`);
-    if (result.output) {
-      renderToolOutput(`$ ${args}`, result.output);
-    }
+    if (result.output) renderToolOutput(`$ ${args}`, result.output);
   }
 }
 
 async function handleGlobCommand(args) {
-  if (!args) {
-    renderError('Usage: /glob <pattern>');
-    return;
-  }
+  if (!args) { renderError('Usage: /glob <pattern>'); return; }
 
   try {
     startSpinner('Searching files...');
     const result = await globSearch(args);
     stopSpinner();
-
-    if (result.results.length === 0) {
-      renderWarning(`No files matching: ${args}`);
-      return;
-    }
-
+    if (result.results.length === 0) { renderWarning(`No files matching: ${args}`); return; }
     const output = result.results.join('\n');
     const header = result.truncated
       ? `Files matching "${args}" (showing ${result.results.length} of ${result.total})`
       : `Files matching "${args}" (${result.total} results)`;
-
     renderToolOutput(header, output);
   } catch (err) {
     stopSpinner();
@@ -328,10 +348,7 @@ async function handleGlobCommand(args) {
 }
 
 async function handleGrepCommand(args) {
-  if (!args) {
-    renderError('Usage: /grep <pattern> [fileglob]');
-    return;
-  }
+  if (!args) { renderError('Usage: /grep <pattern> [fileglob]'); return; }
 
   const parts = args.split(/\s+/);
   const pattern = parts[0];
@@ -341,20 +358,13 @@ async function handleGrepCommand(args) {
     startSpinner('Searching content...');
     const result = await grepSearch(pattern, fileGlob);
     stopSpinner();
-
-    if (result.results.length === 0) {
-      renderWarning(`No matches for: ${pattern}`);
-      return;
-    }
-
+    if (result.results.length === 0) { renderWarning(`No matches for: ${pattern}`); return; }
     const output = result.results
       .map(r => `${chalk.cyan(r.file)}:${chalk.yellow(r.line)}: ${r.content}`)
       .join('\n');
-
     const header = result.truncated
       ? `Matches for "${pattern}" (showing ${result.results.length}, more exist)`
       : `Matches for "${pattern}" (${result.total} results)`;
-
     renderToolOutput(header, output);
   } catch (err) {
     stopSpinner();
@@ -362,81 +372,76 @@ async function handleGrepCommand(args) {
   }
 }
 
+// ─── Chat (using agent core) ───────────────────────────────────────────────
+
+function renderToolCallInfo(name, args) {
+  const argsPreview = typeof args === 'string' ? args : JSON.stringify(args);
+  const short = argsPreview.length > 100 ? argsPreview.substring(0, 100) + '...' : argsPreview;
+  console.log(`\n${chalk.magenta('>')} ${chalk.magenta.bold(name)} ${chalk.gray(short)}`);
+}
+
+function renderToolResultInfo(name, result) {
+  const lines = result.split('\n');
+  const preview = lines.length > 8
+    ? lines.slice(0, 8).join('\n') + `\n${chalk.gray(`... (${lines.length} lines total)`)}`
+    : result;
+  console.log(`${chalk.gray(preview)}`);
+}
+
 async function chat(userInput) {
   const config = getConfig();
   const provider = await getProvider();
-  conversation.addUser(userInput);
 
-  const startTime = Date.now();
-  startSpinner(`Sending to ${chalk.cyan(config.model)}...`);
-  const renderer = new StreamRenderer();
-
-  try {
-    const messages = conversation.getMessages();
-    updateSpinner(`Waiting for ${chalk.cyan(config.model)} to respond...`);
-
-    const stream = provider.streamChat(messages);
-    let firstToken = true;
-    let tokenCount = 0;
-    let operationUsage = null;
-
-    for await (const token of stream) {
-      // Usage info yielded as object at end of stream
-      if (typeof token === 'object' && token.usage) {
-        operationUsage = token.usage;
-        continue;
-      }
-      if (firstToken) {
-        const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
-        stopSpinner();
-        console.log(chalk.gray(`  [${config.model} · first token in ${waitTime}s]`));
+  await runAgent(userInput, {
+    conversation,
+    provider,
+    config,
+    tools: TOOL_DEFINITIONS,
+    autoApprove: globalAutoApprove,
+    maxRounds: MAX_TOOL_ROUNDS,
+    callbacks: {
+      onSpinner(text) { startSpinner(text); },
+      onSpinnerStop() { stopSpinner(); },
+      onFirstToken(meta) {
+        console.log(chalk.gray(`  [${meta.model} · first token in ${meta.waitTime}s]`));
         console.log();
-        firstToken = false;
-      }
-      tokenCount++;
-      renderer.write(token);
-    }
-
-    renderer.end();
-
-    // Store the full response in conversation
-    const fullResponse = renderer.getFullText();
-    conversation.addAssistant(fullResponse);
-
-    // Update cumulative usage
-    if (operationUsage) {
-      sessionUsage.prompt_tokens += operationUsage.prompt_tokens;
-      sessionUsage.completion_tokens += operationUsage.completion_tokens;
-      sessionUsage.total_tokens += operationUsage.total_tokens;
-    }
-
-    // Stats line
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    const tokensPerSec = (tokenCount / ((Date.now() - startTime) / 1000)).toFixed(1);
-    let statsLine = `  [${tokenCount} chunks · ${totalTime}s · ${tokensPerSec} chunks/s]`;
-    console.log(chalk.gray(statsLine));
-
-    // Token usage line (per-operation)
-    if (operationUsage) {
-      const usageLine = `  [tokens: ${operationUsage.prompt_tokens} in + ${operationUsage.completion_tokens} out = ${operationUsage.total_tokens} · session total: ${sessionUsage.total_tokens}]`;
-      console.log(chalk.gray(usageLine));
-    }
-
-    // Re-render with markdown formatting
-    console.log();
-    const formatted = renderMarkdown(fullResponse);
-    process.stdout.write(formatted);
-    console.log();
-  } catch (err) {
-    stopSpinner();
-    renderer.end();
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    renderError(`Chat error after ${elapsed}s: ${err.message || err}`);
-
-    // Remove the failed user message
-    conversation.messages.pop();
-  }
+      },
+      onToken(text) {
+        process.stdout.write(text);
+      },
+      onResponseDone(meta) {
+        process.stdout.write('\n');
+        if (meta.tokenCount > 0) {
+          console.log(chalk.gray(`\n  [${meta.tokenCount} chunks · ${meta.totalTime}s · ${meta.tokensPerSec.toFixed(1)} chunks/s]`));
+        }
+        if (meta.usage) {
+          sessionUsage.prompt_tokens += meta.usage.prompt_tokens;
+          sessionUsage.completion_tokens += meta.usage.completion_tokens;
+          sessionUsage.total_tokens += meta.usage.total_tokens;
+          console.log(chalk.gray(`  [tokens: ${meta.usage.prompt_tokens} in + ${meta.usage.completion_tokens} out = ${meta.usage.total_tokens} · session: ${sessionUsage.total_tokens}]`));
+        }
+        console.log();
+      },
+      onToolCall(name, args) {
+        renderToolCallInfo(name, args);
+      },
+      onToolResult(name, result) {
+        renderToolResultInfo(name, result);
+      },
+      onToolError(name, err) {
+        console.log(chalk.red(`  Error in ${name}: ${err.message}`));
+      },
+      onError(err) {
+        renderError(`Chat error: ${err.message || err}`);
+      },
+      onMaxRounds() {
+        renderWarning(`Stopped after ${MAX_TOOL_ROUNDS} tool rounds.`);
+      },
+    },
+  });
 }
+
+// ─── REPL ───────────────────────────────────────────────────────────────────
 
 async function handleSingleQuestion(question) {
   await startupChecks();
@@ -447,7 +452,11 @@ async function handleSingleQuestion(question) {
 }
 
 export async function startRepl(options = {}) {
-  const { modelOverride, providerOverride, singleQuestion } = options;
+  const { modelOverride, providerOverride, singleQuestion, autoApprove } = options;
+
+  if (autoApprove) {
+    globalAutoApprove = true;
+  }
 
   if (providerOverride) {
     if (!isValidProvider(providerOverride)) {
@@ -477,11 +486,28 @@ export async function startRepl(options = {}) {
   }
 
   await startupChecks();
+
+  // Pre-warm the model
+  const config2 = getConfig();
+  if (config2.provider === 'ollama') {
+    try {
+      const warmupProvider = await getProvider();
+      const warmup = warmupProvider.streamChat([{role:'user', content:'hi'}], {});
+      for await (const _ of warmup) { break; } // read one token then stop
+    } catch {}
+  }
+
   injectProjectContext();
+
+  // Load previous conversation
+  conversation.load();
+  if (conversation.length > 0) {
+    console.log(chalk.gray(`\n  Restored ${conversation.length} messages from previous session`));
+    console.log(chalk.gray(`  Use /clear to start fresh`));
+  }
 
   console.log(chalk.gray('\n  Type /help for commands, /quit to exit\n'));
 
-  // Ctrl+C handling
   process.on('SIGINT', () => {
     console.log(chalk.gray('\n\nInterrupted. Type /quit to exit.'));
   });
@@ -490,28 +516,21 @@ export async function startRepl(options = {}) {
   while (true) {
     try {
       let input = await prompt();
-
       if (!input || !input.trim()) continue;
-
       input = input.trim();
 
-      // Multi-line mode
       if (input === '```') {
         input = await multiLinePrompt();
       }
 
-      // Slash commands
       if (input.startsWith('/')) {
         await handleSlashCommand(input);
         continue;
       }
 
-      // Chat
       await chat(input);
     } catch (err) {
-      if (err.code === 'ERR_USE_AFTER_CLOSE') {
-        break;
-      }
+      if (err.code === 'ERR_USE_AFTER_CLOSE') break;
       renderError(`Error: ${err.message}`);
     }
   }
