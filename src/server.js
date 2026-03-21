@@ -81,6 +81,32 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ─── PWA routes ───────────────────────────────────────────────────────────
+  if (req.method === 'GET' && req.url === '/manifest.json') {
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
+    res.end(JSON.stringify({
+      name: 'VKCoder', short_name: 'VKCoder', description: 'AI Coding Assistant',
+      start_url: '/', display: 'standalone', background_color: '#0d1117', theme_color: '#e94560',
+      icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+    }));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/sw.js') {
+    res.writeHead(200, { 'Content-Type': 'application/javascript' });
+    res.end(`self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>clients.claim());`);
+    return;
+  }
+
+  if (req.method === 'GET' && (req.url === '/icon-192.png' || req.url === '/icon-512.png')) {
+    // Generate a simple SVG-based icon as PNG placeholder
+    const size = req.url.includes('192') ? 192 : 512;
+    // Return a minimal SVG icon (browsers will use theme_color as fallback)
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+    res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="#0d1117" rx="${size*0.15}"/><text x="50%" y="55%" font-size="${size*0.45}" fill="#e94560" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-weight="bold">&#x2605;</text></svg>`);
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 }
@@ -471,6 +497,8 @@ body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFo
     '  utter.rate=1.1;utter.pitch=1;',
     '  speechSynthesis.cancel();speechSynthesis.speak(utter);',
     '}',
+    '',
+    'if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(function(){});}',
   ].join('\n');
 
   return `<!DOCTYPE html>
@@ -480,6 +508,8 @@ body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFo
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>VKCoder</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#e94560">
 <style>${CSS}</style>
 </head>
 <body>
